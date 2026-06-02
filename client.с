@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <pwd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
+int main(int argc, char *argv[]) {
+    int ch;
+    char *cmd_str = NULL;
+    char *ip_addr = "127.0.0.1";
+    int port_val = 1234;
+    int use_tcp = 1;
+
+    static struct option long_opts[] = {
+        {"command", required_argument, 0, 'c'},
+        {"host",    required_argument, 0, 'h'},
+        {"port",    required_argument, 0, 'p'},
+        {"stream",  no_argument,       0, 's'},
+        {"dgram",   no_argument,       0, 'd'},
+        {"help",    no_argument,       0, 'x'},
+        {0, 0, 0, 0}
+    };
+
+    while ((ch = getopt_long(argc, argv, "c:h:p:sd", long_opts, NULL)) != -1) {
+        if (ch == 'c') cmd_str = optarg;
+        else if (ch == 'h') ip_addr = optarg;
+        else if (ch == 'p') port_val = atoi(optarg);
+        else if (ch == 's') use_tcp = 1;
+        else if (ch == 'd') use_tcp = 0;
+        else {
+            printf("Usage: %s -c \"cmd\" [-h host] [-p port] [-s | -d]\n", argv[0]);
+            return 0;
+        }
+    }
+
+    if (cmd_str == NULL) return 1;
+
+    struct passwd *user_info = getpwuid(getuid());
+    if (user_info == NULL) return 1;
+
+    char req_buf[2048];
+    sprintf(req_buf, "\"%s\": \"%s\"", user_info->pw_name, cmd_str);
+
+    int sockfd;
+    struct sockaddr_in srv_addr;
+    memset(&srv_addr, 0, sizeof(srv_addr));
+    srv_addr.sin_family = AF_INET;
+    srv_addr.sin_port = htons(port_val);
+    inet_pton(AF_INET, ip_addr, &srv_addr.sin_addr);
+
+    char res_buf[8192];
+    memset(res_buf, 0, sizeof(res_buf));
+
+    if (use_tcp) {
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        connect(sockfd, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
+        write(sockfd, req_buf, strlen(req_buf));
+        read(sockfd, res_buf, sizeof(res_buf) - 1);
+        close(sockfd);
+    } else {
+        sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+        sendto(sockfd, req_buf, strlen(req_buf), 0, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
+        socklen_t addr_len = sizeof(srv_addr);
+        recvfrom(sockfd, res_buf, sizeof(res_buf) - 1, 0, (struct sockaddr *)&srv_addr, &addr_len);
+        close(sockfd);
+    }
+
+    printf("%s\n", res_buf);
+    return 0;
+}

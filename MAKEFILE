@@ -1,0 +1,19 @@
+CC = gcc
+CFLAGS = -Wall -Werror -g
+
+.PHONY: all clean deb client server
+
+all: client server
+
+client: myRPC-client.c
+  $(CC) $(CFLAGS) myRPC-client.c -o myRPC-client
+
+server: myRPC-server.c
+  $(CC) $(CFLAGS) myRPC-server.c -o myRPC-server
+
+clean:
+  rm -f myRPC-client myRPC-server
+  rm -rf package_build/
+
+deb: all
+  bash package_maker.sh
